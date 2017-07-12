@@ -156,6 +156,7 @@ DTLS_CTRL_GET_TIMEOUT = 73
 DTLS_CTRL_HANDLE_TIMEOUT = 74
 DTLS_CTRL_LISTEN = 75
 DTLS_CTRL_SET_LINK_MTU = 120
+DTLS_CTRL_SET_TIMEOUT_START_DURATION = 122
 
 X509_NAME_MAXLEN = 256
 GETS_MAXLEN = 2048
@@ -606,6 +607,7 @@ __all__ = [
     "DTLSv1_get_timeout", "DTLSv1_handle_timeout",
     "DTLSv1_listen",
     "DTLS_set_link_mtu",
+    "DTLS_set_timeout_start_duration",
     "BIO_gets", "BIO_read", "BIO_get_mem_data",
     "BIO_dgram_set_connected",
     "BIO_dgram_get_peer", "BIO_dgram_set_peer",
@@ -979,6 +981,9 @@ def DTLSv1_listen(ssl):
 
 def DTLS_set_link_mtu(ssl, mtu):
     return _SSL_ctrl(ssl, DTLS_CTRL_SET_LINK_MTU, mtu, None)
+
+def DTLS_set_timeout_start_duration(ssl, duration):
+    return _SSL_ctrl(ssl, DTLS_CTRL_SET_TIMEOUT_START_DURATION,duration, None)
 
 def SSL_read(ssl, length, buffer):
     if buffer:

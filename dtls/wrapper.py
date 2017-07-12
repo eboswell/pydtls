@@ -30,6 +30,7 @@ Classes:
 """
 
 import select
+import time
 
 from logging import getLogger
 
@@ -91,7 +92,6 @@ class DtlsSocket(object):
                 return False
             else:
                 return (time.time() - self.last_update) > self.timeout
-        
 
     def __init__(self,
                  sock=None,
@@ -115,6 +115,7 @@ class DtlsSocket(object):
             server_cert_options = ssl.SSL_BUILD_CHAIN_FLAG_NONE
 
         self._ssl_logging = False
+        self._user_handshake_timeout = 45
         self._server_side = server_side
         self._ciphers = ciphers
         self._curves = curves
@@ -174,6 +175,8 @@ class DtlsSocket(object):
         """
         if self._user_mtu:
             _ssl.set_link_mtu(self._user_mtu)
+        if self._user_handshake_timeout:
+            _ssl.set_handshake_timeout_start_duration(self._user_handshake_timeout)
 
     def settimeout(self, t):
         if self._server_side:
@@ -238,7 +241,7 @@ class DtlsSocket(object):
                     ret = conn.handle_timeout()
                     _logger.debug('Retransmission triggered for %s: %d' % (str(self._clients[conn].getAddr()), ret))
 
-                if self._clients[conn].expired() == True:
+                if self._clients[conn].expired() is True:
                     _logger.debug('Found expired session')
                     self._clientDrop(conn)
 

@@ -295,6 +295,9 @@ class SSL(object):
         else:
             SSL_clear_options(self._ssl, SSL_OP_NO_QUERY_MTU)
 
+    def set_handshake_timeout_start_duration(self, duration):
+        return DTLS_set_timeout_start_duration(self._ssl, duration)
+
 
 class SSLConnection(object):
     """DTLS peer association
