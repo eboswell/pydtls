@@ -29,7 +29,7 @@ from pickle import dump, load
 from setuptools import setup
 
 NAME = "python3-dtls"
-VERSION = "1.1.0"
+VERSION = "1.3.0"
 
 if __name__ == "__main__":
     # Full upload sequence for new version:
@@ -101,7 +101,7 @@ if __name__ == "__main__":
           description="Python Datagram Transport Layer Security",
           author="Ray Brown",
           author_email="code@liquibits.com",
-          maintainer="Björn Freise",
+          maintainer="Bjoern Freise",
           maintainer_email="mcfreis@gmx.net",
           url="https://github.com/mcfreis/pydtls",
           license="Apache-2.0",
