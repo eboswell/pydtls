@@ -27,9 +27,10 @@ from shutil import copy2, rmtree
 from argparse import ArgumentParser
 from pickle import dump, load
 from setuptools import setup
+import datetime
 
 NAME = "python3-dtls"
-VERSION = "1.3.0"
+VERSION = "1.3.0+fb." + datetime.datetime.now().strftime("%Y%m%d%H%M")
 
 if __name__ == "__main__":
     # Full upload sequence for new version:
