@@ -54,7 +54,7 @@ from weakref import proxy
 from .err import openssl_error, InvalidSocketError
 from .err import raise_ssl_error
 from .err import SSL_ERROR_WANT_READ, SSL_ERROR_SYSCALL
-from .err import ERR_WRONG_VERSION_NUMBER, ERR_COOKIE_MISMATCH, ERR_NO_SHARED_CIPHER
+from .err import ERR_WRONG_VERSION_NUMBER, ERR_COOKIE_MISMATCH, ERR_NO_SHARED_CIPHER, ERR_SHUTDOWN_IN_INIT
 from .err import ERR_NO_CIPHER, ERR_HANDSHAKE_TIMEOUT, ERR_PORT_UNREACHABLE
 from .err import ERR_READ_TIMEOUT, ERR_WRITE_TIMEOUT
 from .err import ERR_BOTH_KEY_CERT_FILES, ERR_BOTH_KEY_CERT_FILES_SVR, ERR_NO_CERTS
@@ -340,6 +340,7 @@ class SSLConnection(object):
             self._user_config_ssl_ctx(self._intf_ssl_ctx)
 
     def _init_server(self, peer_address):
+        _logger.debug("peer_address: %s", peer_address)
         if (self._sock.type & socket.SOCK_DGRAM) != socket.SOCK_DGRAM:
             raise InvalidSocketError("sock must be of type SOCK_DGRAM")
 
@@ -356,7 +357,7 @@ class SSLConnection(object):
         if rsock is self._sock:
             self._rbio = self._wbio
         else:
-            _logger.debug("!!! _init_server where rsock != self._sock !!!")
+            _logger.debug("Init server with rsock != self._sock")
             self._rsock = rsock
             self._rbio = _BIO(BIO_new_dgram(self._rsock.fileno(), BIO_NOCLOSE))
         server_method = DTLS_server_method
@@ -393,6 +394,7 @@ class SSLConnection(object):
             return lambda: self.do_handshake()
 
     def _init_client(self, peer_address):
+        _logger.debug("peer_address: %s", peer_address)
         if (self._sock.type & socket.SOCK_DGRAM) != socket.SOCK_DGRAM:
             raise InvalidSocketError("sock must be of type SOCK_DGRAM")
 
@@ -424,18 +426,19 @@ class SSLConnection(object):
         rsock = self._udp_demux.get_connection(source._pending_peer_address)
         self._ctx = source._ctx
         self._ssl = source._ssl
+        self._intf_ssl_ctx = source._intf_ssl_ctx
         self._intf_ssl = source._intf_ssl
         new_source_wbio = _BIO(BIO_new_dgram(source._sock.fileno(), BIO_NOCLOSE))
         if hasattr(source, "_rsock"):
-            _logger.debug("copy_server with rsock!")
+            _logger.debug("Copy server with rsock != self._sock")
             self._sock = source._sock
             self._rsock = rsock
             self._wbio = _BIO(BIO_new_dgram(self._sock.fileno(), BIO_NOCLOSE))
             self._rbio = _BIO(BIO_new_dgram(self._rsock.fileno(), BIO_NOCLOSE))
             new_source_rbio = _BIO(BIO_new_dgram(source._rsock.fileno(), BIO_NOCLOSE))
             BIO_dgram_set_peer(self._wbio.value, source._pending_peer_address)
+            BIO_dgram_set_connected(self._rbio.value, source._pending_peer_address)
         else:
-            _logger.debug("copy_server for client fork")
             self._sock = rsock
             self._wbio = _BIO(BIO_new_dgram(self._sock.fileno(), BIO_NOCLOSE))
             self._rbio = self._wbio
@@ -586,9 +589,25 @@ class SSLConnection(object):
         if post_init:
             post_init()
 
+    def close(self):
+        if hasattr(self, '_rsock'):
+            try:
+                peer_address = BIO_dgram_get_peer(self._wbio.value)
+            except AssertionError:
+                pass
+            else:
+                conn = self._udp_demux.remove_connection(peer_address)
+                if conn:
+                    conn.close()
+            if not self._server_side:
+                conn = self._udp_demux.remove_connection(None)
+                if conn:
+                    conn.close()
+            self._rsock.close()
+        if not self._server_side:
+            self._sock.close()
+
     def __del__(self):
-        self._sock.detach()
-        del self._sock
         remove_from_timer_callbacks(self._ssl.value)
         remove_from_info_callback(self._ctx.value)
         if hasattr(self, '_ssl'):
@@ -634,7 +653,7 @@ class SSLConnection(object):
         if not hasattr(self, "_listening"):
             raise InvalidSocketError("listen called on non-listening socket")
 
-        self._pending_peer_address = None
+        _pending_peer_address = None
         try:
             peer_address = self._udp_demux.service()
         except socket.timeout:
@@ -653,6 +672,7 @@ class SSLConnection(object):
         if type(peer_address) is tuple:
             # For this type of demux, the write BIO must be pointed at the peer
             BIO_dgram_set_peer(self._wbio.value, peer_address)
+            BIO_dgram_set_connected(self._rbio.value, peer_address)
             self._udp_demux.forward()
             self._listening_peer_address = peer_address
 
@@ -668,6 +688,8 @@ class SSLConnection(object):
                         break
                 if type(dtls_peer_address) is tuple:
                     break
+                else:
+                    return
         except openssl_error() as err:
             if err.ssl_error == SSL_ERROR_WANT_READ:
                 # This method must be called again to forward the next datagram
@@ -691,11 +713,11 @@ class SSLConnection(object):
             repr(peer_address), repr(dtls_peer_address)
         )
         if type(peer_address) is tuple:
-            self._pending_peer_address = peer_address
+            _pending_peer_address = peer_address
         else:
-            self._pending_peer_address = dtls_peer_address
-        _logger.debug("New peer: %s", self._pending_peer_address)
-        return self._pending_peer_address
+            _pending_peer_address = dtls_peer_address
+        _logger.debug("New peer: %s", _pending_peer_address)
+        return _pending_peer_address
 
     def accept(self):
         """Server-side UDP connection establishment
@@ -708,17 +730,17 @@ class SSLConnection(object):
         forwarding only to an existing peer occurred.
         """
 
-        if not self._pending_peer_address:
-            if not self.listen():
-                _logger.debug("Accept returning without connection")
-                return
+        new_peer = self.listen()
+        if not new_peer:
+            _logger.debug("Accept returning without connection")
+            return
+        self._pending_peer_address = new_peer
         new_conn = SSLConnection(self, self._keyfile, self._certfile, True,
                                  self._cert_reqs, self._ssl_version,
                                  self._ca_certs, self._do_handshake_on_connect,
                                  self._suppress_ragged_eofs, self._ciphers,
                                  cb_user_config_ssl_ctx=self._user_config_ssl_ctx,
                                  cb_user_config_ssl=self._user_config_ssl)
-        new_peer = self._pending_peer_address
         self._pending_peer_address = None
         if self._do_handshake_on_connect:
             # Note that since that connection's socket was just created in its
@@ -839,6 +861,8 @@ class SSLConnection(object):
                 self._wrap_socket_library_call(
                     lambda: SSL_shutdown(self._ssl.value), ERR_READ_TIMEOUT)
                 _logger.debug("...completed shutdown %s", "server-side" if self._server_side else "client-side")
+            elif err.errqueue and err.errqueue[0][0] == ERR_SHUTDOWN_IN_INIT:
+                _logger.info(repr(err))
             else:
                 raise
         if self._server_side:
@@ -974,7 +998,10 @@ class _UnwrappedSocket(socket.socket):
     """
 
     def __init__(self, wsock, rsock, demux, ctx, peer_address):
-        socket.socket.__init__(self, _sock=rsock._sock)
+        def _sockclone_kwargs(old):
+            """Replace socket(_sock=old._sock) with socket(**_sockclone_kwargs(old))"""
+            return dict(family=old.family.value, type=old.type.value, proto=old.proto, fileno=old.fileno())
+        super(_UnwrappedSocket, self).__init__(**_sockclone_kwargs(rsock))
         for attr in "send", "sendto", "sendall":
             try:
                 delattr(self, attr)
@@ -985,6 +1012,16 @@ class _UnwrappedSocket(socket.socket):
         self._demux = demux
         self._ctx = ctx
         self._peer_address = peer_address
+
+    def close(self):
+        if hasattr(self._demux, 'remove_connection'):
+            conn = self._demux.remove_connection(self._peer_address)
+            conn.close()
+        try:
+            super(_UnwrappedSocket, self).close()
+        except OSError as e:
+            if e.errno != errno.EBADF:
+                raise
 
     def send(self, data, flags=0):
         __doc__ = self._wsock.send.__doc__

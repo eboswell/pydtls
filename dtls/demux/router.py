@@ -64,6 +64,10 @@ class UDPDemux(object):
     _forwarding_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     _forwarding_socket.bind(('127.0.0.1', 0))
 
+    def __del__(self):
+        for addr, conn in self.connections.items():
+            conn.close()
+
     def __init__(self, datagram_socket):
         """Constructor
 
@@ -85,6 +89,9 @@ class UDPDemux(object):
             pass
         else:
             raise InvalidSocketError("datagram_socket is connected")
+
+        _logger.critical("datagram_socket: %s", repr(datagram_socket))
+        _logger.critical("_forwarding_socket: %s", repr(self._forwarding_socket))
 
         self.datagram_socket = datagram_socket
         self.payload = ""
@@ -113,6 +120,7 @@ class UDPDemux(object):
         conn.connect(self._forwarding_socket.getsockname())
         if not address:
             conn.setblocking(0)
+            _logger.critical("unknown_socket: %s", repr(conn))
         self.connections[address] = conn
         _logger.debug("Created new connection for address: %s", address)
         return conn
@@ -128,7 +136,11 @@ class UDPDemux(object):
         the socket object whose connection has been removed
         """
 
-        return self.connections.pop(address)
+        try:
+            _logger.debug("pop connection %s", repr(address))
+            return self.connections.pop(address)
+        except KeyError:
+            return None
 
     def service(self):
         """Service the root socket

@@ -510,10 +510,10 @@ def raise_ssl_error(result, func, args, ssl):
         buf = create_string_buffer(512)
         _ERR_error_string_n(err, buf, sizeof(buf))
         errqueue.append((err, buf.value))
-    ssl_error_text = SSL_ERROR_TEXT[ssl_error] if ssl_error in SSL_ERROR_TEXT else 'unknown'
-    _logger.debug("SSL error raised: ssl_error: %d (%s), result: %d, " +
-                  "errqueue: %s, func_name: %s",
-                  ssl_error, ssl_error_text, result, errqueue, func.func_name)
+    # ssl_error_text = SSL_ERROR_TEXT[ssl_error] if ssl_error in SSL_ERROR_TEXT else 'unknown'
+    # _logger.debug("SSL error raised: ssl_error: %d (%s), result: %d, " +
+    #               "errqueue: %s, func_name: %s",
+    #               ssl_error, ssl_error_text, result, errqueue, func.func_name)
     raise openssl_error()(ssl_error, errqueue, result, func, args)
 
 def find_ssl_arg(args):
@@ -1012,7 +1012,7 @@ def DTLSv1_handle_timeout(ssl):
 
 def DTLSv1_listen(ssl):
     su = sockaddr_u()
-    ret = _DTLSv1_listen(ssl, su)
+    ret = _DTLSv1_listen(ssl, byref(su))
     if ret:
         return addr_tuple_from_sockaddr_u(su)
     return None
@@ -1033,19 +1033,19 @@ def DTLS_set_timer_cb(ssl, cb):
             return 0
         return timer_us
 
-    _timer_callbacks_lock.acquire()
-    global _timer_callbacks
-    _timer_callbacks[ssl] = _ruint_voidp_uint(py_dtls_timer_cb)
-    _DTLS_set_timer_cb(ssl, _timer_callbacks[ssl])
-    _timer_callbacks_lock.release()
+    if _timer_callbacks_lock.acquire(timeout=2.0):
+        global _timer_callbacks
+        _timer_callbacks[ssl] = _ruint_voidp_uint(py_dtls_timer_cb)
+        _DTLS_set_timer_cb(ssl, _timer_callbacks[ssl])
+        _timer_callbacks_lock.release()
 
 def remove_from_timer_callbacks(ssl):
-    _timer_callbacks_lock.acquire()
-    global _timer_callbacks
-    if ssl in _timer_callbacks:
-        _DTLS_set_timer_cb(ssl, None)
-        _timer_callbacks.pop(ssl)
-    _timer_callbacks_lock.release()
+    if _timer_callbacks_lock.acquire(timeout=2.0):
+        global _timer_callbacks
+        if ssl in _timer_callbacks:
+            _DTLS_set_timer_cb(ssl, None)
+            _timer_callbacks.pop(ssl)
+        _timer_callbacks_lock.release()
 
 def SSL_read(ssl, length, buffer):
     if buffer:

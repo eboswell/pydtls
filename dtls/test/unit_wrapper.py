@@ -3,6 +3,8 @@
 # Test the support for DTLS through the SSL module. Adapted from the Python
 # standard library's test_ssl.py regression test module by Björn Freise.
 
+import sys
+my_stdout = sys.stdout
 import unittest
 import threading
 import sys
@@ -10,13 +12,14 @@ import socket
 import os
 import pprint
 
-from logging import basicConfig, DEBUG, getLogger
-# basicConfig(level=DEBUG, format="%(asctime)s - %(threadName)-10s - %(name)s - %(levelname)s - %(message)s")
-_logger = getLogger(__name__)
+import logging
+_logger = logging.getLogger(__name__)
 
 import ssl
 from dtls.wrapper import DtlsSocket
-from dtls import err
+from dtls import err, force_routing_demux
+
+# force_routing_demux()
 
 
 HOST = "localhost"
@@ -278,7 +281,7 @@ tests = [
           'client_sigalgs': None},
      'result':
          {'ret_success': False,
-          'error_code': err.ERR_WRITE_TIMEOUT,
+          'error_code': err.ERR_PORT_UNREACHABLE,
           'exception': None}},
     {'testcase':
         {'name': 'no matching sigalgs',
@@ -424,7 +427,6 @@ def params_test(start_server, certfile, protocol, certreqs, cacertsfile,
                        curves=client_curves,
                        sigalgs=client_sigalgs,
                        user_mtu=mtu)
-        s.settimeout(3.0)
         s.connect((HOST, server.port))
         if connectionchatty:
             sys.stdout.write(" client:  sending %s...\n" % (repr(indata)))
@@ -452,6 +454,10 @@ def params_test(start_server, certfile, protocol, certreqs, cacertsfile,
     except Exception as e:
         if connectionchatty:
             sys.stdout.write(" client:  aborting with exception %s...\n" % (repr(e)))
+        try:
+            s.close()
+        except:
+            pass
         return False, e
     finally:
         if start_server:
@@ -497,6 +503,14 @@ class TestSequenceMeta(type):
 
 
 class WrapperTests(unittest.TestCase, metaclass=TestSequenceMeta):
+
+    def setUp(self) -> None:
+        self.stream_handler = logging.StreamHandler(my_stdout)
+        _logger.addHandler(self.stream_handler)
+        _logger.setLevel(logging.DEBUG)
+
+    def tearDown(self) -> None:
+        _logger.removeHandler(self.stream_handler)
 
     def test_build_cert_chain(self):
         steps = [ssl.SSL_BUILD_CHAIN_FLAG_NONE, ssl.SSL_BUILD_CHAIN_FLAG_NO_ROOT]
@@ -642,6 +656,10 @@ class WrapperTests(unittest.TestCase, metaclass=TestSequenceMeta):
             except Exception as e:
                 if connectionchatty:
                     sys.stdout.write(" client:  aborting with exception %s...\n" % (repr(e)))
+                try:
+                    s.close()
+                except:
+                    pass
                 if result:
                     raise
             finally:
@@ -649,6 +667,100 @@ class WrapperTests(unittest.TestCase, metaclass=TestSequenceMeta):
 
         pass
 
+    def test_multi_clients(self):
+        import threading
+        import time
+        from random import randint
+
+        max_connections = 100
+        chatty, connectionchatty = CHATTY, CHATTY_CLIENT
+        start_flag = threading.Event()
+        start_flag.clear()
+        sema = list()
+
+        if chatty or connectionchatty:
+            sys.stdout.write("\nTestcase: test_multiclients (%d)\n" % max_connections)
+
+        def client(client_id, server_port):
+            indata = 'FOO'
+
+            s = DtlsSocket(
+                socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
+                keyfile=None,
+                certfile=None,
+                cert_reqs=ssl.CERT_REQUIRED,
+                ssl_version=ssl.PROTOCOL_DTLSv1_2,
+                ca_certs=ISSUER_CERTFILE_EC,
+                ciphers=None,
+                curves=None,
+                sigalgs=None,
+                user_mtu=None,
+            )
+            indata = f"{indata} from {client_id}"
+            start_flag.wait()
+            s.connect((HOST, server_port))
+            sock_name = s.getsockname()
+            for j in range(10):
+                time.sleep(randint(0, 1000) / 1000)
+                if connectionchatty:
+                    sys.stdout.write(" client (%s):  sending %s...\n" % (repr(sock_name), repr(indata)))
+                s.sendto(indata, (HOST, server.port))
+                outdata = s.recvfrom(1024)[0].decode()
+                if connectionchatty:
+                    sys.stdout.write(" client (%s):  read %s\n" % (repr(sock_name), repr(outdata)))
+                if outdata != indata.lower():
+                    raise AssertionError("bad data <<%s>> (%d) received; expected <<%s>> (%d)\n"
+                                         % (outdata[:min(len(outdata), 20)], len(outdata),
+                                            indata[:min(len(indata), 20)].lower(), len(indata)))
+            if connectionchatty:
+                sys.stdout.write(" client:  closing connection.\n")
+            try:
+                s.close()
+            except Exception as e:
+                if connectionchatty:
+                    sys.stdout.write(" client:  error closing connection %s...\n" % (repr(e)))
+                pass
+            sema.append(None)
+
+        server = ThreadedEchoServer(
+            certificate=CERTFILE_EC,
+            ssl_version=ssl.PROTOCOL_DTLSv1_2,
+            certreqs=ssl.CERT_NONE,
+            cacerts=ISSUER_CERTFILE_EC,
+            ciphers=None,
+            curves=None,
+            sigalgs=None,
+            mtu=None,
+            server_key_exchange_curve=None,
+            server_cert_options=None,
+            chatty=chatty,
+        )
+        flag = threading.Event()
+        server.start(flag)
+        # wait for it to start
+        flag.wait()
+        try:
+            clients = list()
+            for i in range(max_connections):
+                thread = threading.Thread(
+                        target=client,
+                        kwargs={'client_id': str(i), 'server_port': server.port}
+                    )
+                thread.start()
+                clients.append(thread)
+            start_flag.set()
+
+            while len(sema) < max_connections:
+                time.sleep(0.001)
+
+        except Exception as e:
+            if connectionchatty:
+                sys.stdout.write(" client:  aborting with exception %s...\n" % (repr(e)))
+            raise
+        finally:
+            server.stop()
+
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(threadName)-10s - %(name)s - %(levelname)s - %(funcName)s - %(message)s")
     unittest.main()

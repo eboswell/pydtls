@@ -320,6 +320,8 @@ def _SSLSocket_handle_timeout(self):
 
 
 def _SSLSocket_close(self):
+    if self._sslobj and hasattr(self._sslobj, 'close'):
+        self._sslobj.close()
     try:
         _orig_SSLSocket_close(self)
     except Exception as e:
@@ -335,11 +337,9 @@ def _SSLSocket_settimeout(self, timeout):
 
 
 def _SSLSocket___del__(self):
+    if not self._closed:
+        self.close()
     _orig_SSLSocket___del__(self)
-    try:
-        del self._sslobj
-    except:
-        pass
 
 
 if __name__ == "__main__":
