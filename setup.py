@@ -22,6 +22,7 @@
 Install or create a distribution of the PyDTLS package.
 """
 
+import sysconfig
 from os import path, remove
 from shutil import copy2, rmtree
 from argparse import ArgumentParser
@@ -45,7 +46,8 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--plat-name")
     args = parser.parse_known_args()[0]
     dist = "bdist_wheel" in args.command and not args.help
-    plat_dist = dist and args.plat_name
+    plat_name = sysconfig.get_platform()
+    plat_dist = dist and (args.plat_name or plat_name)
     if dist:
         try:
             from pypandoc import convert
@@ -64,9 +66,10 @@ if __name__ == "__main__":
     if dist:
         if plat_dist:
             prebuilt_platform_root = "dtls/prebuilt"
-            if args.plat_name == "win32":
+            plat_name = args.plat_name if args.plat_name else plat_name
+            if plat_name == "win32":
                 platform = "win32-x86"
-            elif args.plat_name in ["win_amd64", "win-amd64"]:
+            elif plat_name in ["win_amd64", "win-amd64"]:
                 platform = "win32-x86_64"
             else:
                 raise ValueError("Unknown platform")
