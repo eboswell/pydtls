@@ -62,6 +62,11 @@ if __name__ == "__main__":
         long_description = open("README.md").read()
 
     top_package_plat_files_file = "dtls_package_files"
+    
+    class BinaryDistribution(Distribution):
+        """Distribution which always forces a binary package with platform name"""
+        def has_ext_modules(foo):
+            return True if plat_dist else False
 
     if dist:
         if plat_dist:
@@ -127,7 +132,8 @@ if __name__ == "__main__":
                                       "openssl_ca.cnf",
                                       "openssl_server.cnf",
                                       "certs/*.pem"]},
-          data_files=[('', [top_package_plat_files_file])] if plat_dist else []
+          data_files=[('', [top_package_plat_files_file])] if plat_dist else [],
+          distclass=BinaryDistribution, 
     )
     if dist:
         try:
