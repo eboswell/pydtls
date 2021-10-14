@@ -66,7 +66,7 @@ if __name__ == "__main__":
             prebuilt_platform_root = "dtls/prebuilt"
             if args.plat_name == "win32":
                 platform = "win32-x86"
-            elif args.plat_name == "win_amd64":
+            elif args.plat_name in ["win_amd64", "win-amd64"]:
                 platform = "win32-x86_64"
             else:
                 raise ValueError("Unknown platform")
