@@ -27,7 +27,7 @@ from os import path, remove
 from shutil import copy2, rmtree
 from argparse import ArgumentParser
 from pickle import dump, load
-from setuptools import setup
+from setuptools import setup, Distribution
 import datetime
 
 NAME = "python3-dtls"
