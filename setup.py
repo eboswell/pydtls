@@ -70,6 +70,8 @@ if __name__ == "__main__":
 
     if dist:
         if plat_dist:
+            top_package_plat_files = []
+            package_files = True
             prebuilt_platform_root = "dtls/prebuilt"
             plat_name = args.plat_name if args.plat_name else plat_name
             if plat_name == "win32":
@@ -77,16 +79,17 @@ if __name__ == "__main__":
             elif plat_name in ["win_amd64", "win-amd64"]:
                 platform = "win32-x86_64"
             else:
-                raise ValueError("Unknown platform")
-            prebuilt_path = prebuilt_platform_root + "/" + platform
-            config = {"MANIFEST_DIR": prebuilt_path}
-            exec(open(prebuilt_path + "/manifest.pycfg").read(), config)
-            # top_package_plat_files = map(lambda x: prebuilt_path + "/" + x,
-            #                              config["FILES"])
-            top_package_plat_files = [prebuilt_path + "/" + x for x in config["FILES"]]
-            # Save top_package_plat_files with the distribution archive
-            with open(top_package_plat_files_file, "wb") as fl:
-                dump(top_package_plat_files, fl)
+                package_files = False
+            if package_files:
+                prebuilt_path = prebuilt_platform_root + "/" + platform
+                config = {"MANIFEST_DIR": prebuilt_path}
+                exec(open(prebuilt_path + "/manifest.pycfg").read(), config)
+                # top_package_plat_files = map(lambda x: prebuilt_path + "/" + x,
+                #                              config["FILES"])
+                top_package_plat_files = [prebuilt_path + "/" + x for x in config["FILES"]]
+                # Save top_package_plat_files with the distribution archive
+                with open(top_package_plat_files_file, "wb") as fl:
+                    dump(top_package_plat_files, fl)
         else:
             top_package_plat_files = []
     else:
