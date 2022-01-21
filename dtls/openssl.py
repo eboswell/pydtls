@@ -475,7 +475,8 @@ def addr_tuple_from_sockaddr_u(su):
         return (inet_ntop(socket.AF_INET6, su.s6.sin6_addr),
                 socket.ntohs(su.s6.sin6_port),
                 socket.ntohl(su.s6.sin6_flowinfo),
-                socket.ntohl(su.s6.sin6_scope_id))
+                #socket.ntohl(su.s6.sin6_scope_id))
+                su.s6.sin6_scope_id)
     assert su.ss.ss_family == socket.AF_INET
     return inet_ntop(socket.AF_INET, su.s4.sin_addr), \
       socket.ntohs(su.s4.sin_port)
@@ -487,7 +488,8 @@ def sockaddr_u_from_addr_tuple(address):
         su.s6.sin6_addr[:] = inet_pton(socket.AF_INET6, address[0])
         su.s6.sin6_port = socket.htons(address[1])
         su.s6.sin6_flowinfo = socket.htonl(address[2])
-        su.s6.sin6_scope_id = socket.htonl(address[3])
+        #su.s6.sin6_scope_id = socket.htonl(address[3])
+        su.s6.sin6_scope_id = address[3]
     else:
         su.ss.ss_family = socket.AF_INET
         su.s4.sin_addr[:] = inet_pton(socket.AF_INET, address[0])
