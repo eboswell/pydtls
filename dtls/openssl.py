@@ -65,6 +65,9 @@ if sys.platform.startswith('win'):
     ssldll_path = path.join(dll_path, "libssl-1_1-x64.dll")
     libcrypto = CDLL(cryptodll_path)
     libssl = CDLL(ssldll_path)
+elif sys.platform.startswith("freebsd"):
+    libcrypto = CDLL("libcrypto.so.111")
+    libssl = CDLL("libssl.so.111")
 else:
     libcrypto = CDLL("libcrypto.so.1.1")
     libssl = CDLL("libssl.so.1.1")
