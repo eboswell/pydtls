@@ -1,3 +1,6 @@
+Modified version of PyDTLS to use for my level 4 project.
+
+
 # Datagram Transport Layer Security for Python
 
 PyDTLS brings Datagram Transport Layer Security (DTLS - RFC 6347:
